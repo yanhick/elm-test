@@ -1,7 +1,9 @@
 module Main exposing (..)
 
 import Html exposing (..)
+import Task
 import Array exposing (..)
+import Position
 import Html.Attributes exposing (style)
 import Keyboard exposing (..)
 import Char exposing (fromCode)
@@ -23,28 +25,32 @@ type alias Board =
 
 
 type alias Model =
-    { start : Position
-    , end : Position
-    , board : Maybe Board
+    { board : Maybe Board
     , chars : List (List Char)
     , width : Int
     , height : Int
-    , position : Position
+    , position : Position.Position
     , key : Maybe Char
+    , win : Bool
     }
-
-
-type alias Position =
-    { x : Int, y : Int }
 
 
 init : ( Model, Cmd Msg )
 init =
-    ( Model (Position 0 0) Nothing [] 5 5 (Position 0 0) Nothing, Cmd.none )
+    ( Model
+        Nothing
+        []
+        5
+        5
+        (Position.Position 0 0)
+        Nothing
+        False
+    , Cmd.none
+    )
 
 
 type alias Cell =
-    { position : Position
+    { position : Position.Position
     , state : CellState
     }
 
@@ -59,6 +65,7 @@ type Msg
     = Start
     | NewBoard (List (List Char))
     | Presses Char
+    | Win
 
 
 lowercaseletter : Generator Char
@@ -94,16 +101,22 @@ update msg model =
                     newPos =
                         updatePosition model.position model.board code
                 in
-                    ( { model
-                        | key = Just code
-                        , position = newPos
-                        , board = Just <| makeBoard model.chars newPos
-                      }
-                    , Cmd.none
-                    )
+                    if newPos /= { x = width - 1, y = height - 1 } then
+                        ( { model
+                            | key = Just code
+                            , position = newPos
+                            , board = Just <| makeBoard model.chars newPos
+                          }
+                        , Cmd.none
+                        )
+                    else
+                        ( model, Task.perform (\_ -> Win) (Task.succeed "You win") )
+
+            Win ->
+                ( { model | win = True }, Cmd.none )
 
 
-updatePosition : Position -> Maybe Board -> Char -> Position
+updatePosition : Position.Position -> Maybe Board -> Char -> Position.Position
 updatePosition p b k =
     case b of
         Just b ->
@@ -124,16 +137,6 @@ updatePosition p b k =
 
                 matchingChars =
                     matchingChar (List.concat b)
-
-                adjacent p1 p2 =
-                    (p1.y == p2.y && p1.x + 1 == p2.x)
-                        || (p1.y + 1 == p2.y && p1.x + 1 == p2.x)
-                        || (p1.y + 1 == p2.y && p1.x == p2.x)
-                        || (p1.y + 1 == p2.y && p1.x - 1 == p2.x)
-                        || (p1.y == p2.y && p1.x - 1 == p2.x)
-                        || (p1.y - 1 == p2.y && p1.x - 1 == p2.x)
-                        || (p1.y - 1 == p2.y && p1.x == p2.x)
-                        || (p1.y - 1 == p2.y && p1.x + 1 == p2.x)
             in
                 Maybe.withDefault p <|
                     List.foldr
@@ -143,7 +146,7 @@ updatePosition p b k =
                                     c
 
                                 Nothing ->
-                                    if adjacent p position then
+                                    if Position.adjacent p position then
                                         Just position
                                     else
                                         Nothing
@@ -155,7 +158,7 @@ updatePosition p b k =
             p
 
 
-makeBoard : List (List Char) -> Position -> Board
+makeBoard : List (List Char) -> Position.Position -> Board
 makeBoard ls p =
     let
         idx =
@@ -168,14 +171,14 @@ makeBoard ls p =
             (\( x, l ) ->
                 (List.map
                     (\( y, l ) ->
-                        if Position x y == p then
+                        if Position.Position x y == p then
                             { position =
-                                Position x y
+                                Position.Position x y
                             , state = Selected
                             }
                         else
                             { position =
-                                Position x y
+                                Position.Position x y
                             , state = Letter l
                             }
                     )
@@ -191,25 +194,28 @@ subscriptions model =
 
 
 view : Model -> Html Msg
-view { board, key } =
-    case board of
-        Just board ->
-            div []
-                (List.map (row key) board)
+view { board, key, win } =
+    if win then
+        div [] [ text "Win!" ]
+    else
+        case board of
+            Just board ->
+                div []
+                    (List.map (row key) board)
 
-        Nothing ->
-            case key of
-                Just key ->
-                    div []
-                        [ button
-                            [ onClick Start ]
-                            [ text "Start" ]
-                        , text (String.fromChar key)
-                        ]
+            Nothing ->
+                case key of
+                    Just key ->
+                        div []
+                            [ button
+                                [ onClick Start ]
+                                [ text "Start" ]
+                            , text (String.fromChar key)
+                            ]
 
-                Nothing ->
-                    div []
-                        [ button [ onClick Start ] [ text "Start" ] ]
+                    Nothing ->
+                        div []
+                            [ button [ onClick Start ] [ text "Start" ] ]
 
 
 cellStyle : Cell -> Attribute Msg
